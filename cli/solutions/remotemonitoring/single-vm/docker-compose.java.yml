@@ -1,0 +1,144 @@
+version: '2'
+
+# TODO: remove APPLICATION_SECRET
+services:
+  reverseproxy:
+    image: azureiotpcs/remote-monitoring-nginx:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    ports:
+      - "80:10080"
+      - "443:10443"
+    depends_on:
+      - webui
+      - auth
+      - iothubmanager
+      - devicesimulation
+      - telemetry
+      - config
+      - diagnostics
+    volumes:
+      - /app/certs:/app/certs:ro
+
+  webui:
+    image: azureiotpcs/pcs-remote-monitoring-webui:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    depends_on:
+      - auth
+      - iothubmanager
+      - devicesimulation
+      - telemetry
+      - config
+      - diagnostics
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  auth:
+    image: azureiotpcs/pcs-auth-dotnet:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  iothubmanager:
+    image: azureiotpcs/iothub-manager-java:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    depends_on:
+      - auth
+      - storageadapter
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  devicesimulation:
+    image: azureiotpcs/device-simulation-dotnet:DS-1.0.5
+    networks:
+      - default_net
+    restart: always
+    depends_on:
+      - storageadapter
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10240k"
+        max-file: "10"
+    volumes:
+      - /tmp/share:/tmp/share
+
+  telemetry:
+    image: azureiotpcs/telemetry-java:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    depends_on:
+      - auth
+      - storageadapter
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  config:
+    image: azureiotpcs/pcs-config-java:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    depends_on:
+      - auth
+      - storageadapter
+      - devicesimulation
+      - telemetry
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  storageadapter:
+    image: azureiotpcs/pcs-storage-adapter-java:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  asamanager:
+    image: azureiotpcs/asa-manager-dotnet:${PCS_DOCKER_TAG}
+    networks:
+      - default_net
+    depends_on:
+      - iothubmanager
+      - config
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+  diagnostics:
+    image: azureiotpcs/pcs-diagnostics-dotnet:Diagnostics-2.0.2
+    networks:
+      - default_net
+    depends_on:
+      - config
+    environment:
+      - PCS_KEYVAULT_NAME
+      - PCS_AAD_APPID
+      - PCS_AAD_APPSECRET
+
+networks:
+  default_net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+       - subnet: 172.18.0.0/16
+         gateway: 172.18.0.1
